@@ -61,7 +61,7 @@ def maskrcnn_loss(mask_logits, fg_labels, fg_target_masks):
 def maskrcnn_upXconv_head(feature, num_category, num_convs, norm=None):
     """
     Args:
-        feature (NxCx s x s): size is 7 in C4 models and 14 in FPN models.
+        feature (Nx s x s x C): size is 7 in C4 models and 14 in FPN models.
         num_category(int):
         num_convs (int): number of convolution layers
         norm (str or None): either None or 'GN'
@@ -71,7 +71,7 @@ def maskrcnn_upXconv_head(feature, num_category, num_convs, norm=None):
     """
     assert norm in [None, 'GN'], norm
     l = feature
-    with argscope([Conv2D, Conv2DTranspose], data_format='channels_first',
+    with argscope([Conv2D, Conv2DTranspose], data_format='channels_last',
                   kernel_initializer=tf.variance_scaling_initializer(
                       scale=2.0, mode='fan_out',
                       distribution='untruncated_normal' if get_tf_version_tuple() >= (1, 12) else 'normal')):
@@ -82,6 +82,8 @@ def maskrcnn_upXconv_head(feature, num_category, num_convs, norm=None):
                 l = GroupNorm('gn{}'.format(k), l)
         l = Conv2DTranspose('deconv', l, cfg.MRCNN.HEAD_DIM, 2, strides=2, activation=tf.nn.relu)
         l = Conv2D('conv', l, num_category, 1, kernel_initializer=tf.random_normal_initializer(stddev=0.001))
+        # TODO: Leo still keep nchw format here to align with loss calculation
+        l = tf.transpose(l, perm=[0, 3, 1, 2])
     return l
 
 

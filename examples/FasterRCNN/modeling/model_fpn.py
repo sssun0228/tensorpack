@@ -36,17 +36,18 @@ def fpn_model(features):
         try:
             resize = tf.compat.v2.image.resize_images
             with tf.name_scope(name):
-                shp2d = tf.shape(x)[2:]
-                x = tf.transpose(x, [0, 2, 3, 1])
+                #TODO: Leo no tranpose since input is nhwc already
+                shp2d = tf.shape(x)[1:3]
+#                x = tf.transpose(x, [0, 2, 3, 1])
                 x = resize(x, shp2d * 2, 'nearest')
-                x = tf.transpose(x, [0, 3, 1, 2])
+#                x = tf.transpose(x, [0, 3, 1, 2])
                 return x
         except AttributeError:
             return FixedUnPooling(
                 name, x, 2, unpool_mat=np.ones((2, 2), dtype='float32'),
-                data_format='channels_first')
+                data_format='channels_last')
 
-    with argscope(Conv2D, data_format='channels_first',
+    with argscope(Conv2D, data_format='channels_last',
                   activation=tf.identity, use_bias=True,
                   kernel_initializer=tf.variance_scaling_initializer(scale=1.)):
         lat_2345 = [Conv2D('lateral_1x1_c{}'.format(i + 2), c, num_channel, 1)
@@ -64,7 +65,8 @@ def fpn_model(features):
                  for i, c in enumerate(lat_sum_5432[::-1])]
         if use_gn:
             p2345 = [GroupNorm('gn_p{}'.format(i + 2), c) for i, c in enumerate(p2345)]
-        p6 = MaxPooling('maxpool_p6', p2345[-1], pool_size=1, strides=2, data_format='channels_first', padding='VALID')
+        p6 = MaxPooling('maxpool_p6', p2345[-1], pool_size=1, strides=2, data_format='channels_last', padding='VALID')
+
         return p2345 + [p6]
 
 

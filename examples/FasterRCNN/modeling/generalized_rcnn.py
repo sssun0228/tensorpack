@@ -28,7 +28,9 @@ class GeneralizedRCNN(ModelDesc):
     def preprocess(self, image):
         image = tf.expand_dims(image, 0)
         image = image_preprocess(image, bgr=True)
-        return tf.transpose(image, [0, 3, 1, 2])
+        #TODO: Leo set input as nhwc
+        return image
+        #return tf.transpose(image, [0, 3, 1, 2])
 
     def optimizer(self):
         lr = tf.get_variable('learning_rate', initializer=0.003, trainable=False)
@@ -263,7 +265,7 @@ class ResNetFPNModel(GeneralizedRCNN):
         return BoxProposals(proposal_boxes), losses
 
     def roi_heads(self, image, features, proposals, targets):
-        image_shape2d = tf.shape(image)[2:]     # h,w
+        image_shape2d = tf.shape(image)[1:3]     # h,w
         assert len(features) == 5, "Features have to be P23456!"
         gt_boxes, gt_labels, *_ = targets
 
@@ -273,7 +275,6 @@ class ResNetFPNModel(GeneralizedRCNN):
         fastrcnn_head_func = getattr(model_frcnn, cfg.FPN.FRCNN_HEAD_FUNC)
         if not cfg.FPN.CASCADE:
             roi_feature_fastrcnn = multilevel_roi_align(features[:4], proposals.boxes, 7)
-
             head_feature = fastrcnn_head_func('fastrcnn', roi_feature_fastrcnn)
             fastrcnn_label_logits, fastrcnn_box_logits = fastrcnn_outputs(
                 'fastrcnn/outputs', head_feature, cfg.DATA.NUM_CATEGORY)
@@ -301,11 +302,11 @@ class ResNetFPNModel(GeneralizedRCNN):
                     'maskrcnn', roi_feature_maskrcnn, cfg.DATA.NUM_CATEGORY)   # #fg x #cat x 28 x 28
 
                 target_masks_for_fg = crop_and_resize(
-                    tf.expand_dims(gt_masks, 1),
+                    tf.expand_dims(gt_masks, -1),
                     proposals.fg_boxes(),
                     proposals.fg_inds_wrt_gt, 28,
-                    pad_border=False)  # fg x 1x28x28
-                target_masks_for_fg = tf.squeeze(target_masks_for_fg, 1, 'sampled_fg_mask_targets')
+                    pad_border=False)  # fg x28x28x 1
+                target_masks_for_fg = tf.squeeze(target_masks_for_fg, 3, 'sampled_fg_mask_targets')
                 all_losses.append(maskrcnn_loss(mask_logits, proposals.fg_labels(), target_masks_for_fg))
             return all_losses
         else:
