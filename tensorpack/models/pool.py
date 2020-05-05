@@ -121,18 +121,42 @@ def FixedUnPooling(x, shape, unpool_mat=None, data_format='channels_last'):
 
         if data_format == 'NHWC':
             x = tf.transpose(x, [0, 3, 1, 2])
+
+        # till this point FixedUnPooling_fix is same as FixedUnPooling.
+
         # perform a tensor-matrix kronecker product
+        N = tf.shape(x)[0]
+        C = tf.shape(x)[1]
+        H = tf.shape(x)[2]
+        W = tf.shape(x)[3]
+        SH = shape[0]
+        SW = shape[1]
         x = tf.expand_dims(x, -1)       # bchwx1
         mat = tf.expand_dims(unpool_mat, 0)  # 1xshxsw
+
+        #pdb.set_trace()
         ret = tf.tensordot(x, mat, axes=1)  # bxcxhxwxshxsw
 
+        ret = tf.reshape(ret, [N*C, H, W, shape[0], shape[1]]) #b*c x h x w x sh x sw
+
+        '''
         if data_format == 'NHWC':
             ret = tf.transpose(ret, [0, 2, 4, 3, 5, 1])
         else:
             ret = tf.transpose(ret, [0, 1, 2, 4, 3, 5])
+        '''
 
-        shape3_dyn = [output_shape.get_dynamic(k) for k in range(1, 4)]
-        ret = tf.reshape(ret, tf.stack([-1] + shape3_dyn))
+        ret = tf.transpose(ret, [0, 1, 3, 2, 4]) # b*c x h x sh x w x sw
 
+        ret = tf.reshape(ret, tf.stack([N, C, H*SH, W*SW])) # b x c x h*sh x w*sw
+
+        if data_format == 'NHWC':
+            ret = tf.transpose(ret, [0, 2, 3, 1]) # earlier just before the tensordot we had turned NHWC to NCHW. So return it to NHWC
+
+        #shape3_dyn = [output_shape.get_dynamic(k) for k in range(1, 4)]
+        #ret = tf.reshape(ret, tf.stack([-1] + shape3_dyn))
+
+    #pdb.set_trace()
     ret.set_shape(tf.TensorShape(output_shape.get_static()))
     return ret
+

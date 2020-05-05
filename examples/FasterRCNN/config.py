@@ -88,11 +88,11 @@ _C = config     # short alias to avoid coding
 
 # mode flags ---------------------
 _C.TRAINER = 'replicated'  # options: 'horovod', 'replicated'
-_C.MODE_MASK = True        # Faster R-CNN or Mask R-CNN
+_C.MODE_MASK = False        # Faster R-CNN or Mask R-CNN
 _C.MODE_FPN = True
 
 # dataset -----------------------
-_C.DATA.BASEDIR = '/path/to/your/DATA/DIR'
+_C.DATA.BASEDIR = '/data/kdatta/COCO' #'/path/to/your/DATA/DIR'
 # All available dataset names are defined in `dataset/coco.py:register_coco`.
 # All TRAIN dataset will be concatenated for training.
 _C.DATA.TRAIN = ('coco_train2017',)   # i.e. trainval35k
