@@ -84,16 +84,16 @@ def fpn_map_rois_to_levels(boxes):
 
     Be careful that the returned tensor could be empty.
     """
-    sqrtarea = tf.sqrt(tf_area(boxes))
-    level = tf.cast(tf.floor(
-        4 + tf.log(sqrtarea * (1. / 224) + 1e-6) * (1.0 / np.log(2))), tf.int32)
+    #sqrtarea = tf.sqrt(tf_area(boxes))
+    #level = tf.cast(tf.floor(
+    #    4 + tf.log(sqrtarea * (1. / 224) + 1e-6) * (1.0 / np.log(2))), tf.int32)
 
     # RoI levels range from 2~5 (not 6)
     level_ids = [
-        tf.where(level <= 2),
-        tf.where(tf.equal(level, 3)),   # == is not supported
-        tf.where(tf.equal(level, 4)),
-        tf.where(level >= 5)]
+        tf.convert_to_tensor(np.arange(0,500), dtype=tf.int32),#tf.where(level <= 2),
+        tf.convert_to_tensor(np.arange(500,1000), dtype=tf.int32),#tf.where(tf.equal(level, 3)),   # == is not supported
+        tf.convert_to_tensor(np.arange(1000,1500), dtype=tf.int32),#tf.where(tf.equal(level, 4)),
+        tf.convert_to_tensor(np.arange(1500,2500), dtype=tf.int32)]#tf.where(level >= 5)]
     level_ids = [tf.reshape(x, [-1], name='roi_level{}_id'.format(i + 2))
                  for i, x in enumerate(level_ids)]
     num_in_levels = [tf.size(x, name='num_roi_level{}'.format(i + 2))
@@ -202,9 +202,9 @@ def generate_fpn_proposals(
         proposal_scores = tf.concat(all_scores, axis=0)  # n
         # Here we are different from Detectron.
         # Detectron picks top-k within the batch, rather than within an image. However we do not have a batch.
-        proposal_topk = tf.minimum(tf.size(proposal_scores), fpn_nms_topk)# num boxes per lvl*5 vs 2000
-        proposal_scores, topk_indices = tf.nn.top_k(proposal_scores, k=proposal_topk, sorted=False)
-        proposal_boxes = tf.gather(proposal_boxes, topk_indices, name="all_proposals")
+        #proposal_topk = tf.minimum(tf.size(proposal_scores), fpn_nms_topk)# num boxes per lvl*5 vs 2000
+        #proposal_scores, topk_indices = tf.nn.top_k(proposal_scores, k=proposal_topk, sorted=False)
+        #proposal_boxes = tf.gather(proposal_boxes, topk_indices, name="all_proposals")
     else:
         for lvl in range(num_lvl):
             with tf.name_scope('Lvl{}'.format(lvl + 2)):
