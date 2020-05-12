@@ -84,25 +84,32 @@ def fpn_map_rois_to_levels(boxes):
 
     Be careful that the returned tensor could be empty.
     """
-    #sqrtarea = tf.sqrt(tf_area(boxes))
-    #level = tf.cast(tf.floor(
-    #    4 + tf.log(sqrtarea * (1. / 224) + 1e-6) * (1.0 / np.log(2))), tf.int32)
+    sqrtarea = tf.sqrt(tf_area(boxes))
+    level = tf.cast(tf.floor(
+        4 + tf.log(sqrtarea * (1. / 224) + 1e-6) * (1.0 / np.log(2))), tf.int32)
 
     # RoI levels range from 2~5 (not 6)
     level_ids = [
-        tf.convert_to_tensor(np.arange(0,500), dtype=tf.int32),#tf.where(level <= 2),
-        tf.convert_to_tensor(np.arange(500,1000), dtype=tf.int32),#tf.where(tf.equal(level, 3)),   # == is not supported
-        tf.convert_to_tensor(np.arange(1000,1500), dtype=tf.int32),#tf.where(tf.equal(level, 4)),
-        tf.convert_to_tensor(np.arange(1500,2500), dtype=tf.int32)]#tf.where(level >= 5)]
+        tf.where(level <= 2),
+        tf.where(tf.equal(level, 3)),   # == is not supported
+        tf.where(tf.equal(level, 4)),
+        tf.where(level >= 5)]
     level_ids = [tf.reshape(x, [-1], name='roi_level{}_id'.format(i + 2))
                  for i, x in enumerate(level_ids)]
     num_in_levels = [tf.size(x, name='num_roi_level{}'.format(i + 2))
                      for i, x in enumerate(level_ids)]
     add_moving_summary(*num_in_levels)
 
+    #level_boxes = []
+    #for id_in_level in level_ids:
+    #    box_dummy = tf.zeros(shape=(1000-tf.size(id_in_level),4), dtype=tf.float32) #pad #boxes to 1000
+    #    box_true = tf.gather(boxes, id_in_level)
+    #    box_padded = tf.concat([box_true, box_dummy], axis=0)
+    #    dummy_for_shape_infer = tf.zeros(shape=(1000,4), dtype=tf.float32)
+    #    level_boxes.append(tf.add(box_padded, dummy_for_shape_infer))
+
     level_boxes = [tf.gather(boxes, ids) for ids in level_ids]
     return level_ids, level_boxes
-
 
 @under_name_scope()
 def multilevel_roi_align(features, rcnn_boxes, resolution):
@@ -120,17 +127,27 @@ def multilevel_roi_align(features, rcnn_boxes, resolution):
     all_rois = []
 
     # Crop patches from corresponding levels
-    for i, boxes, featuremap in zip(itertools.count(), level_boxes, features):
+    for i, boxes, featuremap, ids in zip(itertools.count(), level_boxes, features, level_ids):
         with tf.name_scope('roi_level{}'.format(i + 2)):
             boxes_on_featuremap = boxes * (1.0 / cfg.FPN.ANCHOR_STRIDES[i])
-            all_rois.append(roi_align(featuremap, boxes_on_featuremap, resolution))
+            all_rois.append(roi_align(featuremap, boxes_on_featuremap, resolution, ids))
+    #cnt = 0
+    #valid_rois = []
+    #for id_in_level in level_ids:
+    #    num_valid_box = tf.size(id_in_level)
+    #    valid_rois_per_level = all_rois[cnt][0:num_valid_box]
+    #    valid_rois.append(valid_rois_per_level)
+    #    cnt = cnt+1
 
     # this can fail if using TF<=1.8 with MKL build
+    #all_rois = tf.concat(valid_rois, axis=0)
     all_rois = tf.concat(all_rois, axis=0)  # NCHW
     # Unshuffle to the original order, to match the original samples
-    level_id_perm = tf.concat(level_ids, axis=0)  # A permutation of 1~N
+    level_id_perm = tf.concat(level_ids, axis=0)  # A permutation of 1~N 
     level_id_invert_perm = tf.invert_permutation(level_id_perm)
-    all_rois = tf.gather(all_rois, level_id_invert_perm, name="output")
+    level_id_invert_perm_mod = tf.mod(level_id_invert_perm, 400)
+    all_rois = tf.gather(all_rois, level_id_invert_perm_mod, name="output")
+    
     return all_rois
 
 
@@ -202,9 +219,9 @@ def generate_fpn_proposals(
         proposal_scores = tf.concat(all_scores, axis=0)  # n
         # Here we are different from Detectron.
         # Detectron picks top-k within the batch, rather than within an image. However we do not have a batch.
-        #proposal_topk = tf.minimum(tf.size(proposal_scores), fpn_nms_topk)# num boxes per lvl*5 vs 2000
-        #proposal_scores, topk_indices = tf.nn.top_k(proposal_scores, k=proposal_topk, sorted=False)
-        #proposal_boxes = tf.gather(proposal_boxes, topk_indices, name="all_proposals")
+        proposal_topk = tf.minimum(tf.size(proposal_scores), fpn_nms_topk)# num boxes per lvl*5 vs 2000
+        proposal_scores, topk_indices = tf.nn.top_k(proposal_scores, k=proposal_topk, sorted=False)
+        proposal_boxes = tf.gather(proposal_boxes, topk_indices, name="all_proposals")
     else:
         for lvl in range(num_lvl):
             with tf.name_scope('Lvl{}'.format(lvl + 2)):

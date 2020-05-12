@@ -44,10 +44,10 @@ def decode_bbox_target(box_predictions, anchors):
     xaya = (anchors_x2y2 + anchors_x1y1) * 0.5
 
     clip = np.log(config.PREPROC.MAX_SIZE / 16.)
-    wbhb = tf.exp(tf.minimum(box_pred_twth, clip)) * waha
+    wbhb = tf.exp(tf.minimum(box_pred_twth, clip)) * waha * 0.5
     xbyb = box_pred_txty * waha + xaya
-    x1y1 = xbyb - wbhb * 0.5
-    x2y2 = xbyb + wbhb * 0.5    # (...)x1x2
+    x1y1 = xbyb - wbhb
+    x2y2 = xbyb + wbhb    # (...)x1x2
     out = tf.concat([x1y1, x2y2], axis=-2)
     return tf.reshape(out, orig_shape)
 
@@ -78,9 +78,8 @@ def encode_bbox_target(boxes, anchors):
     encoded = tf.concat([txty, twth], axis=1)  # (-1x2x2)
     return tf.reshape(encoded, tf.shape(boxes))
 
-
 @under_name_scope()
-def crop_and_resize(image, boxes, box_ind, crop_size, pad_border=True):
+def crop_and_resize(image, boxes, crop_size, ids, pad_border=True):
     """
     Aligned version of tf.image.crop_and_resize, following our definition of floating point boxes.
 
@@ -137,36 +136,60 @@ def crop_and_resize(image, boxes, box_ind, crop_size, pad_border=True):
     image_shape = tf.shape(image)[1:3]
 
     boxes = transform_fpcoor_for_tf(boxes, image_shape, [crop_size, crop_size])
+
+    def pad_box():
+        box_dummy = tf.zeros(shape=(100-num_valid,4), dtype=tf.float32)
+        box_padded = tf.concat([boxes, box_dummy], axis=0)
+        return box_padded
+    def slice_box():
+        box_padded = boxes[0:100]
+        return box_padded
+
+    num_fixed = tf.constant(100)
+    num_valid = tf.size(ids)
+    box_padded= tf.cond(tf.less(num_valid, num_fixed), lambda:pad_box(), lambda:slice_box())
+    #if (num_valid < 100):
+    #    box_dummy = tf.zeros(shape=(100-num_valid,4), dtype=tf.float32)
+    #    box_padded = tf.concat([boxes, box_dummy], axis=0)
+    #else:
+    #    box_padded = boxes[0:100]
+    dummy_for_shape_infer = tf.zeros(shape=(100,4), dtype=tf.float32)
+    boxes = tf.add(box_padded, dummy_for_shape_infer)
     #TODO: Leo no tranpose since input is nhwc already
 #    image = tf.transpose(image, [0, 2, 3, 1])   # nhwc
+    box_ind = tf.zeros([tf.shape(boxes)[0]], dtype=tf.int32)
     ret = tf.image.crop_and_resize(
-        image, boxes, tf.cast(box_ind, tf.int32),
+        image, boxes, box_ind,
         crop_size=[crop_size, crop_size])
+    
 #    ret = tf.transpose(ret, [0, 3, 1, 2])   # ncss
     return ret
 
 
 @under_name_scope()
-def roi_align(featuremap, boxes, resolution):
+def roi_align(featuremap, boxes, resolution, ids):
     """
     Args:
         featuremap: 1xHxWxC
         boxes: Nx4 floatbox
         resolution: output spatial resolution
+        ids: N ids in level i
 
     Returns:
         NxCx res x res
     """
+
     # sample 4 locations per roi bin
-    ret = crop_and_resize(
+    ret= crop_and_resize(
         featuremap, boxes,
-        tf.zeros([tf.shape(boxes)[0]], dtype=tf.int32),
-        resolution * 2)
+        resolution * 2, ids)
+
     try:
         avgpool = tf.nn.avg_pool2d
     except AttributeError:
         avgpool = tf.nn.avg_pool
     ret = avgpool(ret, [1, 2, 2, 1], [1, 2, 2, 1], padding='SAME', data_format='NHWC')
+
     return ret
 
 

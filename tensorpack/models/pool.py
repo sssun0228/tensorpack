@@ -87,6 +87,13 @@ def UnPooling2x2ZeroFilled(x):
 
 @layer_register(log_shape=True)
 def FixedUnPooling(x, shape, unpool_mat=None, data_format='channels_last'):
+    N = tf.shape(x)[0]
+    H = tf.shape(x)[1]
+    W = tf.shape(x)[2]
+    C = tf.shape(x)[3]
+    return tf.image.resize(x, [2*H, 2*W], 'nearest')
+    
+def FixedUnPooling_org(x, shape, unpool_mat=None, data_format='channels_last'):
     """
     Unpool the input with a fixed matrix to perform kronecker product with.
 
